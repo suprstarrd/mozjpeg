@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 # Don't export symbols from executables unless the CMAKE_ENABLE_EXPORTS
 # variable is set.
 cmake_policy(SET CMP0065 NEW)
