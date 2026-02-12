@@ -3,20 +3,21 @@
  *
  * This file was part of the Independent JPEG Group's software:
  * Copyright (C) 1994-1997, Thomas G. Lane.
- * It was modified by The libjpeg-turbo Project to include only code and
- * information relevant to libjpeg-turbo.
- * mozjpeg Modifications:
+ * libjpeg-turbo Modifications:
+ * Copyright (C) 2022, 2024, D. R. Commander.
  * Copyright (C) 2014, Mozilla Corporation.
- * For conditions of distribution and use, see the accompanying README file.
+ * For conditions of distribution and use, see the accompanying README.ijg
+ * file.
  *
  * This file contains the coefficient buffer controller for compression.
- * This controller is the top level of the JPEG compressor proper.
+ * This controller is the top level of the lossy JPEG compressor proper.
  * The coefficient buffer lies between forward-DCT and entropy encoding steps.
  */
 
 #define JPEG_INTERNALS
 #include "jinclude.h"
 #include "jpeglib.h"
+#include "jsamplecomp.h"
 #include "jchuff.h"
 
 /* We use a full-image coefficient buffer when doing Huffman optimization,
@@ -63,11 +64,12 @@ typedef my_coef_controller *my_coef_ptr;
 
 
 /* Forward declarations */
-METHODDEF(boolean) compress_data(j_compress_ptr cinfo, JSAMPIMAGE input_buf);
+METHODDEF(boolean) compress_data(j_compress_ptr cinfo, _JSAMPIMAGE input_buf);
 #ifdef FULL_COEF_BUFFER_SUPPORTED
 METHODDEF(boolean) compress_first_pass(j_compress_ptr cinfo,
-                                       JSAMPIMAGE input_buf);
-METHODDEF(boolean) compress_output(j_compress_ptr cinfo, JSAMPIMAGE input_buf);
+                                       _JSAMPIMAGE input_buf);
+METHODDEF(boolean) compress_output(j_compress_ptr cinfo,
+                                   _JSAMPIMAGE input_buf);
 #endif
 METHODDEF(boolean) compress_trellis_pass
         (j_compress_ptr cinfo, JSAMPIMAGE input_buf);
@@ -113,25 +115,27 @@ start_pass_coef(j_compress_ptr cinfo, J_BUF_MODE pass_mode)
   case JBUF_PASS_THRU:
     if (coef->whole_image[0] != NULL)
       ERREXIT(cinfo, JERR_BAD_BUFFER_MODE);
-    coef->pub.compress_data = compress_data;
+    coef->pub._compress_data = compress_data;
     break;
 #ifdef FULL_COEF_BUFFER_SUPPORTED
   case JBUF_SAVE_AND_PASS:
     if (coef->whole_image[0] == NULL)
       ERREXIT(cinfo, JERR_BAD_BUFFER_MODE);
-    coef->pub.compress_data = compress_first_pass;
+    coef->pub._compress_data = compress_first_pass;
     break;
   case JBUF_CRANK_DEST:
     if (coef->whole_image[0] == NULL)
       ERREXIT(cinfo, JERR_BAD_BUFFER_MODE);
-    coef->pub.compress_data = compress_output;
+    coef->pub._compress_data = compress_output;
     break;
 #endif
+#if BITS_IN_JSAMPLE == 8
   case JBUF_REQUANT:
     if (coef->whole_image[0] == NULL)
       ERREXIT(cinfo, JERR_BAD_BUFFER_MODE);
     coef->pub.compress_data = compress_trellis_pass;
     break;
+#endif
       
   default:
     ERREXIT(cinfo, JERR_BAD_BUFFER_MODE);
@@ -151,7 +155,7 @@ start_pass_coef(j_compress_ptr cinfo, J_BUF_MODE pass_mode)
  */
 
 METHODDEF(boolean)
-compress_data(j_compress_ptr cinfo, JSAMPIMAGE input_buf)
+compress_data(j_compress_ptr cinfo, _JSAMPIMAGE input_buf)
 {
   my_coef_ptr coef = (my_coef_ptr)cinfo->coef;
   JDIMENSION MCU_col_num;       /* index of current MCU within row */
@@ -185,11 +189,11 @@ compress_data(j_compress_ptr cinfo, JSAMPIMAGE input_buf)
         for (yindex = 0; yindex < compptr->MCU_height; yindex++) {
           if (coef->iMCU_row_num < last_iMCU_row ||
               yoffset + yindex < compptr->last_row_height) {
-            (*cinfo->fdct->forward_DCT) (cinfo, compptr,
-                                         input_buf[compptr->component_index],
-                                         coef->MCU_buffer[blkn],
-                                         ypos, xpos, (JDIMENSION) blockcnt,
-                                         NULL);
+            (*cinfo->fdct->_forward_DCT) (cinfo, compptr,
+                                          input_buf[compptr->component_index],
+                                          coef->MCU_buffer[blkn],
+                                          ypos, xpos, (JDIMENSION)blockcnt,
+                                          NULL);
             if (blockcnt < compptr->MCU_width) {
               /* Create some dummy blocks at the right edge of the image. */
               jzero_far((void *)coef->MCU_buffer[blkn + blockcnt],
@@ -256,7 +260,7 @@ compress_data(j_compress_ptr cinfo, JSAMPIMAGE input_buf)
  */
 
 METHODDEF(boolean)
-compress_first_pass(j_compress_ptr cinfo, JSAMPIMAGE input_buf)
+compress_first_pass(j_compress_ptr cinfo, _JSAMPIMAGE input_buf)
 {
   my_coef_ptr coef = (my_coef_ptr)cinfo->coef;
   JDIMENSION last_iMCU_row = cinfo->total_iMCU_rows - 1;
@@ -274,12 +278,12 @@ compress_first_pass(j_compress_ptr cinfo, JSAMPIMAGE input_buf)
     buffer = (*cinfo->mem->access_virt_barray)
       ((j_common_ptr)cinfo, coef->whole_image[ci],
        coef->iMCU_row_num * compptr->v_samp_factor,
-       (JDIMENSION) compptr->v_samp_factor, TRUE);
+       (JDIMENSION)compptr->v_samp_factor, TRUE);
     
     buffer_dst = (*cinfo->mem->access_virt_barray)
       ((j_common_ptr) cinfo, coef->whole_image_uq[ci],
        coef->iMCU_row_num * compptr->v_samp_factor,
-       (JDIMENSION) compptr->v_samp_factor, TRUE);
+       (JDIMENSION)compptr->v_samp_factor, TRUE);
     
     /* Count non-dummy DCT block rows in this iMCU row. */
     if (coef->iMCU_row_num < last_iMCU_row)
@@ -300,11 +304,11 @@ compress_first_pass(j_compress_ptr cinfo, JSAMPIMAGE input_buf)
      */
     for (block_row = 0; block_row < block_rows; block_row++) {
       thisblockrow = buffer[block_row];
-      (*cinfo->fdct->forward_DCT) (cinfo, compptr,
-                                   input_buf[ci], thisblockrow,
-                                   (JDIMENSION) (block_row * DCTSIZE),
-                                   (JDIMENSION) 0, blocks_across,
-                                   buffer_dst[block_row]);
+      (*cinfo->fdct->_forward_DCT) (cinfo, compptr,
+                                    input_buf[ci], thisblockrow,
+                                    (JDIMENSION)(block_row * DCTSIZE),
+                                    (JDIMENSION)0, blocks_across,
+                                    buffer_dst[block_row]);
       if (ndummy > 0) {
         /* Create dummy blocks at the right edge of the image. */
         thisblockrow += blocks_across; /* => first dummy block */
@@ -348,6 +352,7 @@ compress_first_pass(j_compress_ptr cinfo, JSAMPIMAGE input_buf)
   return compress_output(cinfo, input_buf);
 }
 
+#if BITS_IN_JSAMPLE == 8
 METHODDEF(boolean)
 compress_trellis_pass (j_compress_ptr cinfo, JSAMPIMAGE input_buf)
 {
@@ -388,12 +393,12 @@ compress_trellis_pass (j_compress_ptr cinfo, JSAMPIMAGE input_buf)
     buffer = (*cinfo->mem->access_virt_barray)
     ((j_common_ptr) cinfo, coef->whole_image[compptr->component_index],
      coef->iMCU_row_num * compptr->v_samp_factor,
-     (JDIMENSION) compptr->v_samp_factor, TRUE);
+     (JDIMENSION)compptr->v_samp_factor, TRUE);
     
     buffer_dst = (*cinfo->mem->access_virt_barray)
     ((j_common_ptr) cinfo, coef->whole_image_uq[compptr->component_index],
      coef->iMCU_row_num * compptr->v_samp_factor,
-     (JDIMENSION) compptr->v_samp_factor, TRUE);
+     (JDIMENSION)compptr->v_samp_factor, TRUE);
     
     /* Count non-dummy DCT block rows in this iMCU row. */
     if (coef->iMCU_row_num < last_iMCU_row)
@@ -478,6 +483,7 @@ compress_trellis_pass (j_compress_ptr cinfo, JSAMPIMAGE input_buf)
   /* Emit data to the entropy encoder, sharing code with subsequent passes */
   return compress_output(cinfo, input_buf);
 }
+#endif
 
 /*
  * Process some data in subsequent passes of a multi-pass case.
@@ -490,7 +496,7 @@ compress_trellis_pass (j_compress_ptr cinfo, JSAMPIMAGE input_buf)
  */
 
 METHODDEF(boolean)
-compress_output(j_compress_ptr cinfo, JSAMPIMAGE input_buf)
+compress_output(j_compress_ptr cinfo, _JSAMPIMAGE input_buf)
 {
   my_coef_ptr coef = (my_coef_ptr)cinfo->coef;
   JDIMENSION MCU_col_num;       /* index of current MCU within row */
@@ -554,13 +560,17 @@ compress_output(j_compress_ptr cinfo, JSAMPIMAGE input_buf)
  */
 
 GLOBAL(void)
-jinit_c_coef_controller(j_compress_ptr cinfo, boolean need_full_buffer)
+_jinit_c_coef_controller(j_compress_ptr cinfo, boolean need_full_buffer)
 {
   my_coef_ptr coef;
+
+  if (cinfo->data_precision != BITS_IN_JSAMPLE)
+    ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
 
   coef = (my_coef_ptr)
     (*cinfo->mem->alloc_small) ((j_common_ptr)cinfo, JPOOL_IMAGE,
                                 sizeof(my_coef_controller));
+  memset(coef, 0, sizeof(my_coef_controller));
   cinfo->coef = (struct jpeg_c_coef_controller *)coef;
   coef->pub.start_pass = start_pass_coef;
 
@@ -576,19 +586,19 @@ jinit_c_coef_controller(j_compress_ptr cinfo, boolean need_full_buffer)
          ci++, compptr++) {
       coef->whole_image[ci] = (*cinfo->mem->request_virt_barray)
         ((j_common_ptr) cinfo, JPOOL_IMAGE, FALSE,
-         (JDIMENSION) jround_up((long) compptr->width_in_blocks,
+         (JDIMENSION)jround_up((long) compptr->width_in_blocks,
                                 (long) compptr->h_samp_factor),
-         (JDIMENSION) jround_up((long) compptr->height_in_blocks,
+         (JDIMENSION)jround_up((long) compptr->height_in_blocks,
                                 (long) compptr->v_samp_factor),
-         (JDIMENSION) compptr->v_samp_factor);
+         (JDIMENSION)compptr->v_samp_factor);
       
       coef->whole_image_uq[ci] = (*cinfo->mem->request_virt_barray)
         ((j_common_ptr) cinfo, JPOOL_IMAGE, FALSE,
-         (JDIMENSION) jround_up((long) compptr->width_in_blocks,
+         (JDIMENSION)jround_up((long) compptr->width_in_blocks,
                                 (long) compptr->h_samp_factor),
-         (JDIMENSION) jround_up((long) compptr->height_in_blocks,
+         (JDIMENSION)jround_up((long) compptr->height_in_blocks,
                                 (long) compptr->v_samp_factor),
-         (JDIMENSION) compptr->v_samp_factor);
+         (JDIMENSION)compptr->v_samp_factor);
     }
 #else
     ERREXIT(cinfo, JERR_BAD_BUFFER_MODE);

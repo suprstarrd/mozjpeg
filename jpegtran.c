@@ -4,10 +4,10 @@
  * This file was part of the Independent JPEG Group's software:
  * Copyright (C) 1995-2019, Thomas G. Lane, Guido Vollbeding.
  * libjpeg-turbo Modifications:
- * Copyright (C) 2010, 2014, 2017, 2019-2022, D. R. Commander.
- * mozjpeg Modifications:
+ * Copyright (C) 2010, 2014, 2017, 2019-2022, 2024, D. R. Commander.
  * Copyright (C) 2014, Mozilla Corporation.
- * For conditions of distribution and use, see the accompanying README file.
+ * For conditions of distribution and use, see the accompanying README.ijg
+ * file.
  *
  * This file contains a command-line user interface for JPEG transcoding.
  * It is very similar to cjpeg.c, and partly to djpeg.c, but provides
@@ -36,11 +36,11 @@
 
 static const char *progname;    /* program name for error messages */
 static char *icc_filename;      /* for -icc switch */
-JDIMENSION max_scans;           /* for -maxscans switch */
+static JDIMENSION max_scans;    /* for -maxscans switch */
 static char *outfilename;       /* for -outfile switch */
 static char *dropfilename;      /* for -drop switch */
-boolean report;                 /* for -report switch */
-boolean strict;                 /* for -strict switch */
+static boolean report;          /* for -report switch */
+static boolean strict;          /* for -strict switch */
 static boolean prefer_smallest;  /* use smallest of input or result file (if no image-changing options supplied) */
 static JCOPY_OPTION copyoption; /* -copy switch */
 static jpeg_transform_info transformoption; /* image transformation options */
@@ -65,10 +65,10 @@ usage(void)
   fprintf(stderr, "  -copy icc      Copy only ICC profile markers\n");
   fprintf(stderr, "  -copy all      Copy all extra markers\n");
 #ifdef ENTROPY_OPT_SUPPORTED
-  fprintf(stderr, "  -optimize      Optimize Huffman table (smaller file, but slow compression, enabled by default)\n");
+  fprintf(stderr, "  -optimize      Optimize Huffman table (smaller file, but slow compression)\n");
 #endif
 #ifdef C_PROGRESSIVE_SUPPORTED
-  fprintf(stderr, "  -progressive   Create progressive JPEG file (enabled by default)\n");
+  fprintf(stderr, "  -progressive   Create progressive JPEG file\n");
 #endif
   fprintf(stderr, "  -revert        Revert to standard defaults (instead of mozjpeg defaults)\n");
   fprintf(stderr, "  -fastcrush     Disable progressive scan optimization\n");
@@ -198,7 +198,7 @@ parse_switches(j_compress_ptr cinfo, int argc, char **argv,
       exit(EXIT_FAILURE);
 #endif
 
-    } else if (keymatch(arg, "copy", 2)) {
+    } else if (keymatch(arg, "copy", 1)) {
       /* Select which extra markers to copy. */
       if (++argn >= argc)       /* advance to next argument */
         usage();
@@ -257,7 +257,8 @@ parse_switches(j_compress_ptr cinfo, int argc, char **argv,
       if (!printed_version) {
         fprintf(stderr, "%s version %s (build %s)\n",
                 PACKAGE_NAME, VERSION, BUILD);
-        fprintf(stderr, "%s\n\n", JCOPYRIGHT);
+        fprintf(stderr, JCOPYRIGHT1);
+        fprintf(stderr, JCOPYRIGHT2 "\n");
         fprintf(stderr, "Emulating The Independent JPEG Group's software, version %s\n\n",
                 JVERSION);
         printed_version = TRUE;
@@ -340,7 +341,7 @@ parse_switches(j_compress_ptr cinfo, int argc, char **argv,
        * handle. */
       transformoption.perfect = TRUE;
 
-    } else if (keymatch(arg, "progressive", 2)) {
+    } else if (keymatch(arg, "progressive", 1)) {
       /* Select simple progressive mode. */
 #ifdef C_PROGRESSIVE_SUPPORTED
       simple_progressive = TRUE;

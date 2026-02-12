@@ -9,14 +9,26 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/..)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/..)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/..)
 
-if(MSVC)
+if(MSVC_LIKE)
   # Build all configurations against shared C library
-  foreach(var CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
-    CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
-    if(${var} MATCHES "/MT")
-      string(REGEX REPLACE "/MT" "/MD" ${var} "${${var}}")
+  if(CMAKE_VERSION VERSION_EQUAL "3.15" OR
+    CMAKE_VERSION VERSION_GREATER "3.15")
+    if(CMAKE_BUILD_TYPE_UC STREQUAL "DEBUG")
+      set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDebugDLL)
+    elseif(MSVC_IDE)
+      set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+    else()
+      set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
     endif()
-  endforeach()
+    message(STATUS "Visual C++ run-time library for libjpeg API DLL: ${CMAKE_MSVC_RUNTIME_LIBRARY}")
+  elseif(MSVC)
+    foreach(var CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+      CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
+      if(${var} MATCHES "/MT")
+        string(REGEX REPLACE "/MT" "/MD" ${var} "${${var}}")
+      endif()
+    endforeach()
+  endif()
 endif()
 
 foreach(src ${JPEG_SOURCES})
@@ -29,19 +41,15 @@ if(WITH_SIMD AND (MSVC_IDE OR XCODE))
 endif()
 
 if(WIN32)
-  if(WITH_MEM_SRCDST)
-    set(DEFFILE ../win/jpeg${SO_MAJOR_VERSION}-memsrcdst.def)
-else()
-    set(DEFFILE ../win/jpeg${SO_MAJOR_VERSION}.def)
-  endif()
+  set(DEFFILE ../win/jpeg${SO_MAJOR_VERSION}.def)
 endif()
-if(MSVC)
+if(MSVC_LIKE)
   configure_file(${CMAKE_SOURCE_DIR}/win/jpeg.rc.in
     ${CMAKE_BINARY_DIR}/win/jpeg.rc)
   set(JPEG_SRCS ${JPEG_SRCS} ${CMAKE_BINARY_DIR}/win/jpeg.rc)
 endif()
-add_library(jpeg SHARED ${JPEG_SRCS} ${DEFFILE} $<TARGET_OBJECTS:simd>
-  ${SIMD_OBJS})
+add_library(jpeg SHARED ${JPEG_SRCS} ${DEFFILE} ${SIMD_TARGET_OBJECTS}
+  ${SIMD_OBJS} $<TARGET_OBJECTS:jpeg12> $<TARGET_OBJECTS:jpeg16>)
 if(UNIX)
   target_link_libraries(jpeg m)
 endif()
@@ -59,11 +67,18 @@ if(MAPFLAG)
   set_target_properties(jpeg PROPERTIES
     LINK_FLAGS "${MAPFLAG}${CMAKE_CURRENT_BINARY_DIR}/../libjpeg.map")
 endif()
-if(MSVC)
+if(MSVC_LIKE)
   set_target_properties(jpeg PROPERTIES
     RUNTIME_OUTPUT_NAME jpeg${SO_MAJOR_VERSION})
-  # The jsimd_*.c file is built using /MT, so this prevents a linker warning.
-  set_target_properties(jpeg PROPERTIES LINK_FLAGS "/NODEFAULTLIB:LIBCMT /NODEFAULTLIB:LIBCMTD")
+  # The jsimd_*.c file is built to use libcmt or libcmtd, so this prevents a
+  # linker warning.
+  if(MSVC)
+    set_target_properties(jpeg PROPERTIES LINK_FLAGS
+      "/NODEFAULTLIB:LIBCMT /NODEFAULTLIB:LIBCMTD")
+  else()
+    set_target_properties(jpeg PROPERTIES LINK_FLAGS
+      "-Wl,-nodefaultlib:libcmt -Wl,-nodefaultlib:libcmtd")
+  endif()
 elseif(MINGW)
   set_target_properties(jpeg PROPERTIES SUFFIX -${SO_MAJOR_VERSION}.dll)
 endif()
@@ -71,24 +86,38 @@ endif()
 if(WIN32)
   set(USE_SETMODE "-DUSE_SETMODE")
 endif()
-if(WITH_12BIT)
-  set(COMPILE_FLAGS "-DGIF_SUPPORTED -DPPM_SUPPORTED ${USE_SETMODE}")
-else()
-  set(COMPILE_FLAGS "-DBMP_SUPPORTED -DGIF_SUPPORTED -DPPM_SUPPORTED -DTARGA_SUPPORTED ${USE_SETMODE}")
-	set(CJPEG_BMP_SOURCES ../rdbmp.c ../rdtarga.c)
-	set(DJPEG_BMP_SOURCES ../wrbmp.c ../wrtarga.c)
+set(CDJPEG_COMPILE_FLAGS
+  "-DBMP_SUPPORTED -DGIF_SUPPORTED -DPPM_SUPPORTED -DTARGA_SUPPORTED ${USE_SETMODE}")
 
-  if(PNG_SUPPORTED)
-    report_option(PNG_SUPPORTED "PNG reading support")
-    set(COMPILE_FLAGS "${COMPILE_FLAGS} -DPNG_SUPPORTED")
-    set(CJPEG_BMP_SOURCES ${CJPEG_BMP_SOURCES} ../rdpng.c)
-  endif()
-endif()
-
-add_executable(cjpeg ../cjpeg.c ../cdjpeg.c ../rdgif.c ../rdppm.c ../rdjpeg.c
-  ../rdswitch.c ${CJPEG_BMP_SOURCES})
-set_property(TARGET cjpeg PROPERTY COMPILE_FLAGS ${COMPILE_FLAGS})
+# Compile a separate version of these source files with 12-bit and 16-bit data
+# precision.
+add_library(cjpeg12 OBJECT ../rdgif.c ../rdppm.c)
+set_property(TARGET cjpeg12 PROPERTY COMPILE_FLAGS
+  "-DBITS_IN_JSAMPLE=12 -DGIF_SUPPORTED -DPPM_SUPPORTED")
+add_library(cjpeg16 OBJECT ../rdgif.c ../rdppm.c)
+set_property(TARGET cjpeg16 PROPERTY COMPILE_FLAGS
+  "-DBITS_IN_JSAMPLE=16 -DGIF_SUPPORTED -DPPM_SUPPORTED")
+add_executable(cjpeg ../cjpeg.c ../cdjpeg.c ../rdbmp.c ../rdgif.c ../rdppm.c
+  ../rdjpeg.c
+  ../rdswitch.c ../rdtarga.c $<TARGET_OBJECTS:cjpeg12>
+  $<TARGET_OBJECTS:cjpeg16>)
+set_property(TARGET cjpeg PROPERTY COMPILE_FLAGS ${CDJPEG_COMPILE_FLAGS})
 target_link_libraries(cjpeg jpeg)
+
+# Compile a separate version of these source files with 12-bit and 16-bit data
+# precision.
+add_library(djpeg12 OBJECT ../rdcolmap.c ../wrgif.c ../wrppm.c)
+set_property(TARGET djpeg12 PROPERTY COMPILE_FLAGS
+  "-DBITS_IN_JSAMPLE=12 -DGIF_SUPPORTED -DPPM_SUPPORTED")
+add_library(djpeg16 OBJECT ../wrppm.c)
+set_property(TARGET djpeg16 PROPERTY COMPILE_FLAGS
+  "-DBITS_IN_JSAMPLE=16 -DPPM_SUPPORTED")
+
+if(PNG_SUPPORTED)
+  report_option(PNG_SUPPORTED "PNG reading support")
+  set(COMPILE_FLAGS "${COMPILE_FLAGS} -DPNG_SUPPORTED")
+  set(CJPEG_BMP_SOURCES ${CJPEG_BMP_SOURCES} ../rdpng.c)
+endif()
 
 if(PNG_SUPPORTED)
   # to avoid finding static library from CMake cache
@@ -106,26 +135,30 @@ if(PNG_SUPPORTED)
 endif()
 
 add_executable(djpeg ../djpeg.c ../cdjpeg.c ../rdcolmap.c ../rdswitch.c
-  ../wrgif.c ../wrppm.c ${DJPEG_BMP_SOURCES})
-set_property(TARGET djpeg PROPERTY COMPILE_FLAGS ${COMPILE_FLAGS})
+  ../wrbmp.c ../wrgif.c ../wrppm.c ../wrtarga.c $<TARGET_OBJECTS:djpeg12>
+  $<TARGET_OBJECTS:djpeg16>)
+set_property(TARGET djpeg PROPERTY COMPILE_FLAGS ${CDJPEG_COMPILE_FLAGS})
 target_link_libraries(djpeg jpeg)
 
 add_executable(jpegtran ../jpegtran.c ../cdjpeg.c ../rdswitch.c ../transupp.c)
 target_link_libraries(jpegtran jpeg)
 set_property(TARGET jpegtran PROPERTY COMPILE_FLAGS "${USE_SETMODE}")
 
+add_executable(example ../example.c)
+target_link_libraries(example jpeg)
+
 add_executable(jcstest ../jcstest.c)
 target_link_libraries(jcstest jpeg)
 
 install(TARGETS jpeg EXPORT ${CMAKE_PROJECT_NAME}Targets
   INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT lib
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT lib
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT bin)
 install(TARGETS cjpeg djpeg jpegtran
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-if(NOT CMAKE_VERSION VERSION_LESS "3.1" AND MSVC AND
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT bin)
+if(NOT CMAKE_VERSION VERSION_LESS "3.1" AND MSVC_LIKE AND
   CMAKE_C_LINKER_SUPPORTS_PDB)
   install(FILES "$<TARGET_PDB_FILE:jpeg>"
-    DESTINATION ${CMAKE_INSTALL_BINDIR} OPTIONAL)
+    DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT bin OPTIONAL)
 endif()

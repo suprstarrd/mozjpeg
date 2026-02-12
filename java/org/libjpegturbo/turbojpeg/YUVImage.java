@@ -1,5 +1,5 @@
 /*
- * Copyright (C)2014, 2017, 2023 D. R. Commander.  All Rights Reserved.
+ * Copyright (C)2014, 2017, 2023-2024 D. R. Commander.  All Rights Reserved.
  * Copyright (C)2015 Viktor Szathmáry.  All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,30 +37,30 @@ package org.libjpegturbo.turbojpeg;
  * serves as the destination image for YUV encode and decompress-to-YUV
  * operations and as the source image for compress-from-YUV and YUV decode
  * operations.
- * <p>
- * Technically, the JPEG format uses the YCbCr colorspace (which is technically
- * not a colorspace but a color transform), but per the convention of the
- * digital video community, the TurboJPEG API uses "YUV" to refer to an image
- * format consisting of Y, Cb, and Cr image planes.
- * <p>
- * Each plane is simply a 2D array of bytes, each byte representing the value
- * of one of the components (Y, Cb, or Cr) at a particular location in the
- * image.  The width and height of each plane are determined by the image
+ *
+ * <p>Technically, the JPEG format uses the YCbCr colorspace (which is
+ * technically not a colorspace but a color transform), but per the convention
+ * of the digital video community, the TurboJPEG API uses "YUV" to refer to an
+ * image format consisting of Y, Cb, and Cr image planes.
+ *
+ * <p>Each plane is simply a 2D array of bytes, each byte representing the
+ * value of one of the components (Y, Cb, or Cr) at a particular location in
+ * the image.  The width and height of each plane are determined by the image
  * width, height, and level of chrominance subsampling.  The luminance plane
  * width is the image width padded to the nearest multiple of the horizontal
- * subsampling factor (1 in the case of 4:4:4, grayscale, or 4:4:0; 2 in the
- * case of 4:2:2 or 4:2:0; 4 in the case of 4:1:1.)  Similarly, the luminance
- * plane height is the image height padded to the nearest multiple of the
- * vertical subsampling factor (1 in the case of 4:4:4, 4:2:2, grayscale, or
- * 4:1:1; 2 in the case of 4:2:0 or 4:4:0.)  This is irrespective of any
- * additional padding that may be specified as an argument to the various
- * YUVImage methods.  The chrominance plane width is equal to the luminance
- * plane width divided by the horizontal subsampling factor, and the
- * chrominance plane height is equal to the luminance plane height divided by
- * the vertical subsampling factor.
- * <p>
- * For example, if the source image is 35 x 35 pixels and 4:2:2 subsampling is
- * used, then the luminance plane would be 36 x 35 bytes, and each of the
+ * subsampling factor (1 in the case of 4:4:4, grayscale, 4:4:0, or 4:4:1; 2 in
+ * the case of 4:2:2 or 4:2:0; 4 in the case of 4:1:1.)  Similarly, the
+ * luminance plane height is the image height padded to the nearest multiple of
+ * the vertical subsampling factor (1 in the case of 4:4:4, 4:2:2, grayscale,
+ * or 4:1:1; 2 in the case of 4:2:0 or 4:4:0; 4 in the case of 4:4:1.)  This is
+ * irrespective of any additional padding that may be specified as an argument
+ * to the various YUVImage methods.  The chrominance plane width is equal to
+ * the luminance plane width divided by the horizontal subsampling factor, and
+ * the chrominance plane height is equal to the luminance plane height divided
+ * by the vertical subsampling factor.
+ *
+ * <p>For example, if the source image is 35 x 35 pixels and 4:2:2 subsampling
+ * is used, then the luminance plane would be 36 x 35 bytes, and each of the
  * chrominance planes would be 18 x 35 bytes.  If you specify a row alignment
  * of 4 bytes on top of this, then the luminance plane would be 36 x 35 bytes,
  * and each of the chrominance planes would be 20 x 35 bytes.
@@ -121,8 +121,8 @@ public class YUVImage {
    * @param planes an array of buffers representing the Y, U (Cb), and V (Cr)
    * image planes (or just the Y plane, if the image is grayscale.)   These
    * planes can be contiguous or non-contiguous in memory.  Plane
-   * <code>i</code> should be at least <code>offsets[i] + </code>
-   * {@link TJ#planeSizeYUV TJ.planeSizeYUV}<code>(i, width, strides[i], height, subsamp)</code>
+   * <code>i</code> should be at least <code>offsets[i] +
+   * {@link TJ#planeSizeYUV TJ.planeSizeYUV}(i, width, strides[i], height, subsamp)</code>
    * bytes in size.
    *
    * @param offsets If this <code>YUVImage</code> instance represents a
@@ -158,10 +158,10 @@ public class YUVImage {
    * buffer.
    *
    * @param yuvImage buffer that contains or will receive a unified planar YUV
-   * image.  Use {@link TJ#bufSizeYUV} to determine the minimum size for this
-   * buffer.  The Y, U (Cb), and V (Cr) image planes are stored sequentially in
-   * the buffer.  (See {@link YUVImage above} for a description of the image
-   * format.)
+   * image.  Use {@link TJ#bufSizeYUV TJ.bufSizeYUV()} to determine the minimum
+   * size for this buffer.  The Y, U (Cb), and V (Cr) image planes are stored
+   * sequentially in the buffer.  (See {@link YUVImage above} for a description
+   * of the image format.)
    *
    * @param width width (in pixels) of the YUV image
    *
@@ -186,8 +186,8 @@ public class YUVImage {
    * @param planes an array of buffers representing the Y, U (Cb), and V (Cr)
    * image planes (or just the Y plane, if the image is grayscale.)  These
    * planes can be contiguous or non-contiguous in memory.  Plane
-   * <code>i</code> should be at least <code>offsets[i] + </code>
-   * {@link TJ#planeSizeYUV TJ.planeSizeYUV}<code>(i, width, strides[i], height, subsamp)</code>
+   * <code>i</code> should be at least <code>offsets[i] +
+   * {@link TJ#planeSizeYUV TJ.planeSizeYUV}(i, width, strides[i], height, subsamp)</code>
    * bytes in size.
    *
    * @param offsets If this <code>YUVImage</code> instance represents a
@@ -222,13 +222,13 @@ public class YUVImage {
                      int height, int subsamp, boolean alloc) {
     if ((planes == null && !alloc) || width < 1 || height < 1 || subsamp < 0 ||
         subsamp >= TJ.NUMSAMP)
-      throw new IllegalArgumentException("Invalid argument in YUVImage::setBuf()");
+      throw new IllegalArgumentException("Invalid argument in YUVImage.setBuf()");
 
     int nc = (subsamp == TJ.SAMP_GRAY ? 1 : 3);
     if ((planes != null && planes.length != nc) ||
         (offsets != null && offsets.length != nc) ||
         (strides != null && strides.length != nc))
-      throw new IllegalArgumentException("YUVImage::setBuf(): planes, offsets, or strides array is the wrong size");
+      throw new IllegalArgumentException("YUVImage.setBuf(): planes, offsets, or strides array is the wrong size");
 
     if (planes == null)
       planes = new byte[nc][];
@@ -250,7 +250,7 @@ public class YUVImage {
         planes[i] = new byte[strides[i] * ph];
       }
       if (planes[i] == null || offsets[i] < 0)
-        throw new IllegalArgumentException("Invalid argument in YUVImage::setBuf()");
+        throw new IllegalArgumentException("Invalid argument in YUVImage.setBuf()");
       if (strides[i] < 0 && offsets[i] - planeSize + pw < 0)
         throw new IllegalArgumentException("Stride for plane " + i +
                                            " would cause memory to be accessed below plane boundary");
@@ -271,10 +271,10 @@ public class YUVImage {
    * Assign a unified buffer to this <code>YUVImage</code> instance.
    *
    * @param yuvImage buffer that contains or will receive a unified planar YUV
-   * image.  Use {@link TJ#bufSizeYUV} to determine the minimum size for this
-   * buffer.  The Y, U (Cb), and V (Cr) image planes are stored sequentially in
-   * the buffer.  (See {@link YUVImage above} for a description of the image
-   * format.)
+   * image.  Use {@link TJ#bufSizeYUV TJ.bufSizeYUV()} to determine the minimum
+   * size for this buffer.  The Y, U (Cb), and V (Cr) image planes are stored
+   * sequentially in the buffer.  (See {@link YUVImage above} for a description
+   * of the image format.)
    *
    * @param width width (in pixels) of the YUV image
    *
@@ -293,7 +293,7 @@ public class YUVImage {
     if (yuvImage == null || width < 1 || align < 1 ||
         ((align & (align - 1)) != 0) || height < 1 || subsamp < 0 ||
         subsamp >= TJ.NUMSAMP)
-      throw new IllegalArgumentException("Invalid argument in YUVImage::setBuf()");
+      throw new IllegalArgumentException("Invalid argument in YUVImage.setBuf()");
     if (yuvImage.length < TJ.bufSizeYUV(width, align, height, subsamp))
       throw new IllegalArgumentException("YUV buffer is not large enough");
 
@@ -441,12 +441,12 @@ public class YUVImage {
     return (v + p - 1) & (~(p - 1));
   }
 
-  protected long handle = 0;
-  protected byte[][] yuvPlanes = null;
-  protected int[] yuvOffsets = null;
-  protected int[] yuvStrides = null;
-  protected int yuvAlign = 1;
-  protected int yuvWidth = 0;
-  protected int yuvHeight = 0;
-  protected int yuvSubsamp = -1;
+  private long handle = 0;
+  private byte[][] yuvPlanes = null;
+  private int[] yuvOffsets = null;
+  private int[] yuvStrides = null;
+  private int yuvAlign = 1;
+  private int yuvWidth = 0;
+  private int yuvHeight = 0;
+  private int yuvSubsamp = -1;
 }
