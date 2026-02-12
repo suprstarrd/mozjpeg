@@ -1019,14 +1019,14 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
 
     /* If the symbol is not present (i.e. has not been added and merged), add
      * it in the huffval table so the symbols are sorted by decreasing frequency. */
-    if (!added_symbol[indices[c1]]) {
-      added_symbol[indices[c1]] = TRUE;
-      htbl->huffval[p] = indices[c1];
+    if (!added_symbol[nz_index[c1]]) {
+      added_symbol[nz_index[c1]] = TRUE;
+      htbl->huffval[p] = nz_index[c1];
       p--;
     }
-    if (!added_symbol[indices[c2]]) {
-      added_symbol[indices[c2]] = TRUE;
-      htbl->huffval[p] = indices[c2];
+    if (!added_symbol[nz_index[c2]]) {
+      added_symbol[nz_index[c2]] = TRUE;
+      htbl->huffval[p] = nz_index[c2];
       p--;
     }
 
