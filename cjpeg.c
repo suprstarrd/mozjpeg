@@ -4,11 +4,13 @@
  * This file was part of the Independent JPEG Group's software:
  * Copyright (C) 1991-1998, Thomas G. Lane.
  * Modified 2003-2011 by Guido Vollbeding.
+ * Lossless JPEG Modifications:
+ * Copyright (C) 1999, Ken Murchison.
  * libjpeg-turbo Modifications:
- * Copyright (C) 2010, 2013-2014, 2017, 2019-2022, D. R. Commander.
- * mozjpeg Modifications:
+ * Copyright (C) 2010, 2013-2014, 2017, 2019-2022, 2024, D. R. Commander.
  * Copyright (C) 2014, Mozilla Corporation.
- * For conditions of distribution and use, see the accompanying README file.
+ * For conditions of distribution and use, see the accompanying README.ijg
+ * file.
  *
  * This file contains a command-line user interface for the JPEG compressor.
  * It should work on any system with Unix- or MS-DOS-style command lines.
@@ -105,11 +107,31 @@ select_file_type(j_compress_ptr cinfo, FILE *infile)
 #endif
 #ifdef GIF_SUPPORTED
   case 'G':
-    return jinit_read_gif(cinfo);
+    if (cinfo->data_precision == 16) {
+#ifdef C_LOSSLESS_SUPPORTED
+      return j16init_read_gif(cinfo);
+#else
+      ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
+      break;
+#endif
+    } else if (cinfo->data_precision == 12)
+      return j12init_read_gif(cinfo);
+    else
+      return jinit_read_gif(cinfo);
 #endif
 #ifdef PPM_SUPPORTED
   case 'P':
-    return jinit_read_ppm(cinfo);
+    if (cinfo->data_precision == 16) {
+#ifdef C_LOSSLESS_SUPPORTED
+      return j16init_read_ppm(cinfo);
+#else
+      ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
+      break;
+#endif
+    } else if (cinfo->data_precision == 12)
+      return j12init_read_ppm(cinfo);
+    else
+      return jinit_read_ppm(cinfo);
 #endif
 #ifdef PNG_SUPPORTED
   case 0x89:
@@ -145,9 +167,9 @@ select_file_type(j_compress_ptr cinfo, FILE *infile)
 static const char *progname;    /* program name for error messages */
 static char *icc_filename;      /* for -icc switch */
 static char *outfilename;       /* for -outfile switch */
-boolean memdst;                 /* for -memdst switch */
-boolean report;                 /* for -report switch */
-boolean strict;                 /* for -strict switch */
+static boolean memdst;          /* for -memdst switch */
+static boolean report;          /* for -report switch */
+static boolean strict;          /* for -strict switch */
 
 
 #ifdef CJPEG_FUZZER
@@ -206,10 +228,10 @@ usage(void)
   fprintf(stderr, "  -grayscale     Create monochrome JPEG file\n");
   fprintf(stderr, "  -rgb           Create RGB JPEG file\n");
 #ifdef ENTROPY_OPT_SUPPORTED
-  fprintf(stderr, "  -optimize      Optimize Huffman table (smaller file, but slow compression, enabled by default)\n");
+  fprintf(stderr, "  -optimize      Optimize Huffman table (smaller file, but slow compression)\n");
 #endif
 #ifdef C_PROGRESSIVE_SUPPORTED
-  fprintf(stderr, "  -progressive   Create progressive JPEG file (enabled by default)\n");
+  fprintf(stderr, "  -progressive   Create progressive JPEG file\n");
 #endif
   fprintf(stderr, "  -baseline      Create baseline JPEG file (disable progressive coding)\n");
 #ifdef TARGA_SUPPORTED
@@ -232,6 +254,16 @@ usage(void)
   fprintf(stderr, "Switches for advanced users:\n");
   fprintf(stderr, "  -noovershoot   Disable black-on-white deringing via overshoot\n");
   fprintf(stderr, "  -nojfif        Do not write JFIF (reduces size by 18 bytes but breaks standards; no known problems in Web browsers)\n");
+  fprintf(stderr, "  -precision N   Create JPEG file with N-bit data precision\n");
+#ifdef C_LOSSLESS_SUPPORTED
+  fprintf(stderr, "                 (N is 8, 12, or 16; default is 8; if N is 16, then -lossless\n");
+  fprintf(stderr, "                 must also be specified)\n");
+#else
+  fprintf(stderr, "                 (N is 8 or 12; default is 8)\n");
+#endif
+#ifdef C_LOSSLESS_SUPPORTED
+  fprintf(stderr, "  -lossless psv[,Pt]  Create lossless JPEG file\n");
+#endif
 #ifdef C_ARITH_CODING_SUPPORTED
   fprintf(stderr, "  -arithmetic    Use arithmetic coding\n");
 #endif
@@ -265,9 +297,7 @@ usage(void)
 #endif
   fprintf(stderr, "  -maxmemory N   Maximum memory to use (in kbytes)\n");
   fprintf(stderr, "  -outfile name  Specify name for output file\n");
-#if JPEG_LIB_VERSION >= 80 || defined(MEM_SRCDST_SUPPORTED)
   fprintf(stderr, "  -memdst        Compress to memory instead of file (useful for benchmarking)\n");
-#endif
   fprintf(stderr, "  -report        Report compression progress\n");
   fprintf(stderr, "  -strict        Treat all warnings as fatal\n");
   fprintf(stderr, "  -verbose  or  -debug   Emit debug output\n");
@@ -297,6 +327,9 @@ parse_switches(j_compress_ptr cinfo, int argc, char **argv,
 {
   int argn;
   char *arg;
+#ifdef C_LOSSLESS_SUPPORTED
+  int psv = 0, pt = 0;
+#endif
   boolean force_baseline;
   boolean simple_progressive;
   char *qualityarg = NULL;      /* saves -quality parm if any */
@@ -381,7 +414,8 @@ parse_switches(j_compress_ptr cinfo, int argc, char **argv,
       if (!printed_version) {
         fprintf(stderr, "%s version %s (build %s)\n",
                 PACKAGE_NAME, VERSION, BUILD);
-        fprintf(stderr, "%s\n\n", JCOPYRIGHT);
+        fprintf(stderr, JCOPYRIGHT1);
+        fprintf(stderr, JCOPYRIGHT2 "\n");
         fprintf(stderr, "Emulating The Independent JPEG Group's software, version %s\n\n",
                 JVERSION);
         printed_version = TRUE;
@@ -422,6 +456,28 @@ parse_switches(j_compress_ptr cinfo, int argc, char **argv,
         usage();
       icc_filename = argv[argn];
 
+    } else if (keymatch(arg, "lossless", 1)) {
+      /* Enable lossless mode. */
+#ifdef C_LOSSLESS_SUPPORTED
+      char ch = ',', *ptr;
+
+      if (++argn >= argc)       /* advance to next argument */
+        usage();
+      if (sscanf(argv[argn], "%d%c", &psv, &ch) < 1 || ch != ',')
+        usage();
+      ptr = argv[argn];
+      while (*ptr && *ptr++ != ','); /* advance to next segment of arg
+                                        string */
+      if (*ptr)
+        sscanf(ptr, "%d", &pt);
+
+      /* We must postpone execution until data_precision is known. */
+#else
+      fprintf(stderr, "%s: sorry, lossless output was not compiled\n",
+              progname);
+      exit(EXIT_FAILURE);
+#endif
+
     } else if (keymatch(arg, "maxmemory", 3)) {
       /* Maximum memory in Kb (or Mb with 'm'). */
       long lval;
@@ -460,6 +516,22 @@ parse_switches(j_compress_ptr cinfo, int argc, char **argv,
       }
       outfilename = argv[argn]; /* save it away for later use */
 
+    } else if (keymatch(arg, "precision", 3)) {
+      /* Set data precision. */
+      int val;
+
+      if (++argn >= argc)       /* advance to next argument */
+        usage();
+      if (sscanf(argv[argn], "%d", &val) != 1)
+        usage();
+#ifdef C_LOSSLESS_SUPPORTED
+      if (val != 8 && val != 12 && val != 16)
+#else
+      if (val != 8 && val != 12)
+#endif
+        usage();
+      cinfo->data_precision = val;
+
     } else if (keymatch(arg, "progressive", 1)) {
       /* Select simple progressive mode. */
 #ifdef C_PROGRESSIVE_SUPPORTED
@@ -473,13 +545,7 @@ parse_switches(j_compress_ptr cinfo, int argc, char **argv,
 
     } else if (keymatch(arg, "memdst", 2)) {
       /* Use in-memory destination manager */
-#if JPEG_LIB_VERSION >= 80 || defined(MEM_SRCDST_SUPPORTED)
       memdst = TRUE;
-#else
-      fprintf(stderr, "%s: sorry, in-memory destination manager was not compiled in\n",
-              progname);
-      exit(EXIT_FAILURE);
-#endif
 
     } else if (keymatch(arg, "quality", 1)) {
       /* Quality ratings (quantization table scaling factors). */
@@ -558,7 +624,7 @@ parse_switches(j_compress_ptr cinfo, int argc, char **argv,
        * default sampling factors.
        */
 
-    } else if (keymatch(arg, "scans", 4)) {
+    } else if (keymatch(arg, "scans", 2)) {
       /* Set scan script. */
 #ifdef C_MULTISCAN_FILES_SUPPORTED
       if (++argn >= argc)       /* advance to next argument */
@@ -681,6 +747,11 @@ parse_switches(j_compress_ptr cinfo, int argc, char **argv,
 #ifdef C_PROGRESSIVE_SUPPORTED
     if (simple_progressive)     /* process -progressive; -scans can override */
       jpeg_simple_progression(cinfo);
+#endif
+
+#ifdef C_LOSSLESS_SUPPORTED
+    if (psv != 0)               /* process -lossless */
+      jpeg_enable_lossless(cinfo, psv, pt);
 #endif
 
 #ifdef C_MULTISCAN_FILES_SUPPORTED
@@ -872,11 +943,9 @@ main(int argc, char **argv)
   file_index = parse_switches(&cinfo, argc, argv, 0, TRUE);
 
   /* Specify data destination for compression */
-#if JPEG_LIB_VERSION >= 80 || defined(MEM_SRCDST_SUPPORTED)
   if (memdst)
     jpeg_mem_dest(&cinfo, &outbuffer, &outsize);
   else
-#endif
     jpeg_stdio_dest(&cinfo, output_file);
 
 #ifdef CJPEG_FUZZER
@@ -923,6 +992,21 @@ main(int argc, char **argv)
     jpeg_write_icc_profile(&cinfo, icc_profile, (unsigned int)icc_len);
 
   /* Process data */
+  if (cinfo.data_precision == 16) {
+#ifdef C_LOSSLESS_SUPPORTED
+    while (cinfo.next_scanline < cinfo.image_height) {
+      num_scanlines = (*src_mgr->get_pixel_rows) (&cinfo, src_mgr);
+      (void)jpeg16_write_scanlines(&cinfo, src_mgr->buffer16, num_scanlines);
+    }
+#else
+    ERREXIT1(&cinfo, JERR_BAD_PRECISION, cinfo.data_precision);
+#endif
+  } else if (cinfo.data_precision == 12) {
+    while (cinfo.next_scanline < cinfo.image_height) {
+      num_scanlines = (*src_mgr->get_pixel_rows) (&cinfo, src_mgr);
+      (void)jpeg12_write_scanlines(&cinfo, src_mgr->buffer12, num_scanlines);
+    }
+  } else {
   while (cinfo.next_scanline < cinfo.image_height) {
     num_scanlines = (*src_mgr->get_pixel_rows) (&cinfo, src_mgr);
 #if JPEG_RAW_READER
@@ -930,7 +1014,8 @@ main(int argc, char **argv)
       (void) jpeg_write_raw_data(&cinfo, src_mgr->plane_pointer, num_scanlines);
     else
 #endif
-    (void) jpeg_write_scanlines(&cinfo, src_mgr->buffer, num_scanlines);
+      (void)jpeg_write_scanlines(&cinfo, src_mgr->buffer, num_scanlines);
+    }
   }
 
   /* Finish compression and release memory */
