@@ -949,6 +949,7 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
 {
 #define MAX_CLEN  32            /* assumed maximum initial code length */
   UINT8 bits[MAX_CLEN + 1];     /* bits[k] = # of symbols with code length k */
+  boolean added_symbol[257];    /* indicates if symbol is present in huffval */
   int bit_pos[MAX_CLEN + 1];    /* # of symbols with smaller code length */
   int codesize[257];            /* codesize[k] = code length of symbol k */
   int nz_index[257];            /* index of nonzero symbol in the original freq
@@ -962,11 +963,13 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
   /* This algorithm is explained in section K.2 of the JPEG standard */
 
   memset(bits, 0, sizeof(bits));
+  memset(added_symbol, 0, sizeof(added_symbol));
   memset(codesize, 0, sizeof(codesize));
   for (i = 0; i < 257; i++)
     others[i] = -1;             /* init links to empty */
 
   freq[256] = 1;                /* make sure 256 has a nonzero count */
+  added_symbol[256] = 1;
   /* Including the pseudo-symbol 256 in the Huffman procedure guarantees
    * that no real symbol is given code-value of all ones, because 256
    * will be placed last in the largest codeword category.
@@ -1013,6 +1016,19 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
     /* Done if we've merged everything into one frequency */
     if (c2 < 0)
       break;
+
+    /* If the symbol is not present (i.e. has not been added and merged), add
+     * it in the huffval table so the symbols are sorted by decreasing frequency. */
+    if (!added_symbol[indices[c1]]) {
+      added_symbol[indices[c1]] = TRUE;
+      htbl->huffval[p] = indices[c1];
+      p--;
+    }
+    if (!added_symbol[indices[c2]]) {
+      added_symbol[indices[c2]] = TRUE;
+      htbl->huffval[p] = indices[c2];
+      p--;
+    }
 
     /* Else merge the two counts/trees */
     freq[c1] += freq[c2];
@@ -1090,16 +1106,6 @@ jpeg_gen_optimal_table(j_compress_ptr cinfo, JHUFF_TBL *htbl, long freq[])
 
   /* Return final symbol counts (only for lengths 0..16) */
   memcpy(htbl->bits, bits, sizeof(htbl->bits));
-
-  /* Return a list of the symbols sorted by code length */
-  /* It's not real clear to me why we don't need to consider the codelength
-   * changes made above, but Rec. ITU-T T.81 | ISO/IEC 10918-1 seems to think
-   * this works.
-   */
-  for (i = 0; i < num_nz_symbols - 1; i++) {
-    htbl->huffval[bit_pos[codesize[i]]] = (UINT8)nz_index[i];
-    bit_pos[codesize[i]]++;
-  }
 
   /* Set sent_table FALSE so updated table will be written to JPEG file. */
   htbl->sent_table = FALSE;

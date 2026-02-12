@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 2.8.12...3.28)
+cmake_minimum_required(VERSION 3.10)
+# Don't export symbols from executables unless the CMAKE_ENABLE_EXPORTS
+# variable is set.
+cmake_policy(SET CMP0065 NEW)
 
 if(CMAKE_EXECUTABLE_SUFFIX)
   set(CMAKE_EXECUTABLE_SUFFIX_TMP ${CMAKE_EXECUTABLE_SUFFIX})
@@ -220,21 +223,21 @@ macro(boolean_number var)
   endif()
 endmacro()
 
-option(BUILD_SHARED_LIBS "Build shared libraries" TRUE)
+option(BUILD_SHARED_LIBS "Build shared libraries" FALSE)
 boolean_number(BUILD_SHARED_LIBS)
 option(REQUIRE_SIMD
   "Generate a fatal error if SIMD extensions are not available for this platform (default is to fall back to a non-SIMD build)"
   FALSE)
 boolean_number(REQUIRE_SIMD)
-option(PNG_SUPPORTED "Enable PNG support (requires libpng)" TRUE)
+option(PNG_SUPPORTED "Enable PNG support (requires libpng)" FALSE)
 boolean_number(PNG_SUPPORTED)
 option(WITH_ARITH_DEC
   "Include arithmetic decoding support when emulating the libjpeg v6b API/ABI"
-  FALSE)
+  TRUE)
 boolean_number(WITH_ARITH_DEC)
 option(WITH_ARITH_ENC
   "Include arithmetic encoding support when emulating the libjpeg v6b API/ABI"
-  FALSE)
+  TRUE)
 boolean_number(WITH_ARITH_ENC)
 if(CMAKE_C_COMPILER_ABI MATCHES "ELF X32")
   set(WITH_JAVA 0)
@@ -255,7 +258,7 @@ boolean_number(WITH_JPEG8)
 option(WITH_SIMD "Include SIMD extensions, if available for this platform" TRUE)
 boolean_number(WITH_SIMD)
 option(WITH_TURBOJPEG
-  "Include the TurboJPEG API library and associated test programs" TRUE)
+  "Include the TurboJPEG API library and associated test programs" FALSE)
 boolean_number(WITH_TURBOJPEG)
 option(WITH_FUZZ "Build fuzz targets" FALSE)
 

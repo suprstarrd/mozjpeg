@@ -492,7 +492,7 @@ jpeg_set_defaults(j_compress_ptr cinfo)
 
   jpeg_default_colorspace(cinfo);
 
-  cinfo->master->dc_scan_opt_mode = 0;
+  cinfo->master->dc_scan_opt_mode = 2;
 
 #ifdef C_PROGRESSIVE_SUPPORTED
   if (cinfo->master->compress_profile == JCP_MAX_COMPRESSION) {

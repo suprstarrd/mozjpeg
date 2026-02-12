@@ -192,7 +192,7 @@ _jpeg_crop_scanline(j_decompress_ptr cinfo, JDIMENSION *xoffset,
   jpeg_component_info *compptr;
 #ifdef UPSAMPLE_MERGING_SUPPORTED
   my_master_ptr master = (my_master_ptr)cinfo->master;
-#endif
+#endif /* UPSAMPLE_MERGING_SUPPORTED */
 
   if (cinfo->data_precision != BITS_IN_JSAMPLE)
     ERREXIT1(cinfo, JERR_BAD_PRECISION, cinfo->data_precision);
@@ -256,7 +256,7 @@ _jpeg_crop_scanline(j_decompress_ptr cinfo, JDIMENSION *xoffset,
     upsample->out_row_width =
       cinfo->output_width * cinfo->out_color_components;
   }
-#endif
+#endif /* UPSAMPLE_MERGING_SUPPORTED */
 
   /* Set the first and last iMCU columns that we must decompress.  These values
    * will be used in single-scan decompressions.
@@ -385,7 +385,7 @@ read_and_discard_scanlines(j_decompress_ptr cinfo, JDIMENSION num_lines)
   JDIMENSION n;
 #ifdef UPSAMPLE_MERGING_SUPPORTED
   my_master_ptr master = (my_master_ptr)cinfo->master;
-#endif
+#endif /* UPSAMPLE_MERGING_SUPPORTED */
   _JSAMPLE dummy_sample[1] = { 0 };
   _JSAMPROW dummy_row = dummy_sample;
   _JSAMPARRAY scanlines = NULL;
@@ -414,7 +414,7 @@ read_and_discard_scanlines(j_decompress_ptr cinfo, JDIMENSION num_lines)
     my_merged_upsample_ptr upsample = (my_merged_upsample_ptr)cinfo->upsample;
     scanlines = &upsample->spare_row;
   }
-#endif
+#endif /* UPSAMPLE_MERGING_SUPPORTED */
 
   for (n = 0; n < num_lines; n++)
     _jpeg_read_scanlines(cinfo, scanlines, 1);
@@ -437,12 +437,14 @@ increment_simple_rowgroup_ctr(j_decompress_ptr cinfo, JDIMENSION rows)
 {
   JDIMENSION rows_left;
   my_main_ptr main_ptr = (my_main_ptr)cinfo->main;
+#ifdef UPSAMPLE_MERGING_SUPPORTED
   my_master_ptr master = (my_master_ptr)cinfo->master;
 
   if (master->using_merged_upsample && cinfo->max_v_samp_factor == 2) {
     read_and_discard_scanlines(cinfo, rows);
     return;
   }
+#endif /* UPSAMPLE_MERGING_SUPPORTED */
 
   /* Increment the counter to the next row group after the skipped rows. */
   main_ptr->rowgroup_ctr += rows / cinfo->max_v_samp_factor;
